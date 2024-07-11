@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard per Specialized Turbo Levo 2018</title>
+    <style>
+        /* Lo stile rimane invariato dal codice originale */
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: white;
+            height: 100%;
+            width: 100%;
+        }
+        .dashboard {
+            display: flex;
+            height: 100%;
+            width: 100%;
+            max-width: 896px;
+            max-height: 414px;
+            margin: auto;
+            overflow: hidden;
+        }
+        .speedometer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .stats {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-gap: 10px;
+            padding: 10px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+        }
+        .stat-card h2 {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+        .stat-card p {
+            margin: 5px 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #speed-value {
+            font-size: 48px;
+            font-weight: bold;
+        }
+        #speed-unit {
+            font-size: 18px;
+            opacity: 0.7;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        .assist-levels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+        }
+        .assist-level {
+            width: 30%;
+            height: 10px;
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 5px;
+        }
+        .assist-level.active {
+            background-color: #FFC107;
+        }
+        .incline-indicator {
+            width: 40px;
+            height: 40px;
+            margin: 5px auto;
+            transform-origin: center;
+            transition: transform 0.3s ease;
+        }
+        #connect-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #status-message {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            color: white;
+            background-color: rgba(0,0,0,0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="speedometer">
+            <svg width="200" height="200" viewBox="0 0 200 200">
+                <circle cx="100" cy="100" r="90" fill="none" stroke="#333" stroke-width="20"/>
+                <path id="speed-arc" d="M100,100 L100,10 A90,90 0 0,1 100,190 Z" fill="#4CAF50"/>
+                <line id="speed-hand" x1="100" y1="100" x2="100" y2="20" stroke="white" stroke-width="2"/>
+                <circle cx="100" cy="100" r="5" fill="white"/>
+            </svg>
+            <div id="speed-value">0</div>
+            <div id="speed-unit">km/h</div>
+        </div>
+        <div class="stats">
+            <div class="stat-card">
+                <h2>Cadenza</h2>
+                <p id="cadence">0 rpm</p>
+                <div class="progress-bar"><div id="cadence-fill" class="progress-fill" style="width: 0%"></div></div>
+            </div>
+            <div class="stat-card">
+                <h2>Batteria</h2>
+                <p id="battery">0%</p>
+                <div class="progress-bar"><div id="battery-fill" class="progress-fill" style="width: 0%"></div></div>
+            </div>
+            <div class="stat-card">
+                <h2>Potenza</h2>
+                <p id="power">0 W</p>
+                <div class="progress-bar"><div id="power-fill" class="progress-fill" style="width: 0%"></div></div>
+            </div>
+            <div class="stat-card">
+                <h2>Assistenza</h2>
+                <p id="assist">0/3</p>
+                <div class="assist-levels">
+                    <div class="assist-level" id="assist-1"></div>
+                    <div class="assist-level" id="assist-2"></div>
+                    <div class="assist-level" id="assist-3"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <h2>Autonomia</h2>
+                <p id="range">0 km</p>
+                <div class="progress-bar"><div id="range-fill" class="progress-fill" style="width: 0%"></div></div>
+            </div>
+            <div class="stat-card">
+                <h2>Inclinazione</h2>
+                <p id="incline">0°</p>
+                <svg class="incline-indicator" viewBox="0 0 40 40">
+                    <line x1="20" y1="5" x2="20" y2="35" stroke="white" stroke-width="2"/>
+                    <polygon points="15,10 25,10 20,5" fill="white"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+    <button id="connect-button">Connetti alla bici</button>
+    <div id="status-message"></div>
+
+    <script>
+        const connectButton = document.getElementById('connect-button');
+        const statusMessage = document.getElementById('status-message');
+        let bluetoothDevice;
+        let characteristicCache;
+
+        connectButton.addEventListener('click', initializeCOBI);
+
+        function initializeCOBI() {
+            statusMessage.textContent = "Connessione in corso...";
+            connectButton.disabled = true;
+
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                disconnectBluetooth();
+            } else {
+                connectBluetooth();
+            }
+        }
+
+        function connectBluetooth() {
+            navigator.bluetooth.requestDevice({
+                filters: [{ services: ['00000003-0000-4b49-4e4f-525441474947'] }]
+            })
+            .then(device => {
+                bluetoothDevice = device;
+                return device.gatt.connect();
+            })
+            .then(server => server.getPrimaryService('00000003-0000-4b49-4e4f-525441474947'))
+            .then(service => service.getCharacteristic('00000013-0000-4b49-4e4f-525441474947'))
+            .then(characteristic => {
+                characteristicCache = characteristic;
+                return characteristic.startNotifications();
+            })
+            .then(_ => {
+                characteristicCache.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+                statusMessage.textContent = "Connesso alla bici";
+                connectButton.textContent = "Disconnetti";
+                connectButton.disabled = false;
+            })
+            .catch(error => {
+                console.error('Errore di connessione Bluetooth:', error);
+                statusMessage.textContent = "Errore di connessione. Riprova.";
+                connectButton.disabled = false;
+            });
+        }
+
+        function disconnectBluetooth() {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+            }
+            statusMessage.textContent = "Disconnesso";
+            connectButton.textContent = "Connetti alla bici";
+            connectButton.disabled = false;
+            resetDashboard();
+        }
+
+        function handleCharacteristicValueChanged(event) {
+            const value = event.target.value;
+            const dataView = new DataView(value.buffer);
+            
+            // Esempio di parsing dei dati. Questo dovrà essere adattato in base al formato effettivo dei dati
+            const speed = dataView.getUint16(0, true) / 100; // Assumiamo che la velocità sia nei primi 2 byte
+            const battery = dataView.getUint8(2); // Assumiamo che la batteria sia nel terzo byte
+            const power = dataView.getUint16(3, true); // Assumiamo che la potenza sia nei byte 3-4
+            const cadence = dataView.getUint8(5); // Assumiamo che la cadenza sia nel sesto byte
+            const assistLevel = dataView.getUint8(6); // Assumiamo che il livello di assistenza sia nel settimo byte
+
+            updateSpeedometer(speed);
+            updateMetric('battery', battery, '%', 100);
+            updateMetric('power', power, ' W', 500);
+            updateMetric('cadence', cadence, ' rpm', 120);
+            updateAssistLevel(assistLevel);
+
+            // Per l'inclinazione e l'autonomia, potremmo dover usare altri metodi o dati simulati
+            // se non sono disponibili direttamente dai dati Bluetooth
+            updateIncline(Math.sin(Date.now() / 10000) * 15);
+            updateMetric('range', 50, ' km', 100); // Valore fisso per esempio
+        }
+
+        function resetDashboard() {
+            updateSpeedometer(0);
+            updateMetric('cadence', 0, ' rpm', 120);
+            updateMetric('battery', 0, '%', 100);
+            updateMetric('power', 0, ' W', 500);
+            updateAssistLevel(0);
+            updateMetric('range', 0, ' km', 100);
+            updateIncline(0);
+        }
+
+        function updateSpeedometer(speed) {
+            const maxSpeed = 50;
+            const angle = Math.min((speed / maxSpeed) * 270, 270);
+            const speedArc = document.getElementById('speed-arc');
+            const speedHand = document.getElementById('speed-hand');
+
+            speedArc.setAttribute('d', `M100,100 L100,10 A90,90 0 ${angle > 180 ? 1 : 0},1 ${100 + 90 * Math.sin(angle * Math.PI / 180)},${100 - 90 * Math.cos(angle * Math.PI / 180)} Z`);
+            speedHand.setAttribute('transform', `rotate(${angle}, 100, 100)`);
+            
+            document.getElementById('speed-value').textContent = speed.toFixed(1);
+        }
+
+        function updateMetric(id, value, unit, max) {
+            document.getElementById(id).textContent = value.toFixed(1) + unit;
+            document.getElementById(id + '-fill').style.width = (value / max * 100) + '%';
+        }
+
+        function updateAssistLevel(level) {
+            document.getElementById('assist').textContent = level + '/3';
+            for (let i = 1; i <= 3; i++) {
+                document.getElementById('assist-' + i).classList.toggle('active', i <= level);
+            }
+        }
+
+        function updateIncline(incline) {
+            document.getElementById('incline').textContent = incline.toFixed(1) + '°';
+            document.querySelector('.incline-indicator').style.transform = `rotate(${incline}deg)`;
+        }
+    </script>
+</body>
+</html>
